@@ -32,7 +32,7 @@ function FileUpload() {
 
         try {
             // Send the file to the Flask server
-            const response = await fetch("https://3.88.194.16:5000/upload", {
+            const response = await fetch("http://172.31.92.205:5000/upload", {
                 method: "POST",
                 body: formData,
             });
