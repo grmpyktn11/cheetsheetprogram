@@ -4,4 +4,5 @@ Currently the hosting is being done for as cheap as possible along with only usi
 there are plans to do more in the future soon! 
 
 check it out here https://main.d3fx1tq6ix6hg8.amplifyapp.com/
+
 Please leave some feedback as well! @grumpykitten11 on discord!
