@@ -1,12 +1,15 @@
 import { useState } from "react";
 import Alarm from "./Alarm";
 import logo from './assets/study.gif'
+import load from './assets/load.gif'
+import panic from './assets/panic.gif'
 
 
 function FileUpload() {
     const [file, setFile] = useState(null);
     const [alarm,setAlarm] = useState(0);
     const [pFile, setPfile] = useState(null);
+    const [picture, setPicture] = useState(logo)
     let meow = false;
 
 
@@ -15,14 +18,17 @@ function FileUpload() {
         if (file && file.type !== "application/vnd.openxmlformats-officedocument.presentationml.presentation") {
             setFile(null);
             setAlarm(1);
+            setPicture(panic)
         } else {
             setFile(file);
         }
     };
 
     const handleUpload = async () => {
+        setPicture(load)
         if (!file) {
             setAlarm(2);
+            setPicture(panic)
             return;
         }
 
@@ -36,22 +42,26 @@ function FileUpload() {
                 method: "POST",
                 body: formData,
             });
-
+            
             if (response.ok) {
                 const data = await response.json();
                 setPfile(`data:application/pdf;base64,${data.pdfEncoded}`);            
                 setAlarm(4)
+                setPicture(logo)
                 
 
             } else {
                 alert("Failed to upload file.");
+                setPicture(panic)
                 setAlarm(3);
             }
         } catch (error) {
             console.error("Error uploading file:", error);
             alert("An error occurred while uploading the file.");
             setAlarm(3)
+            setPicture(panic)
         }
+        setPicture(logo)
     };
 
     return (
@@ -63,7 +73,7 @@ function FileUpload() {
         </div>
 
         <div className="flex justify-center mt-20 h-80">
-        <img src={logo} alt='logo'></img>
+        <img src={picture} alt='logo' style={{ maxWidth: '400px', maxHeight: '500px'}}></img>
         </div>
         <div className="flex flex-col items-center justify-center h-70">
             
