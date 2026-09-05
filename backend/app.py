@@ -5,14 +5,18 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pptx import Presentation
 from fpdf import FPDF
-from openai import OpenAI
+import anthropic
 
 
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv('OPENAI_KEY'))
+# Initialize the Claude client. The zero-arg constructor resolves credentials
+# from the environment: ANTHROPIC_API_KEY, or the profile stored by `ant auth
+# login`. Nothing to hardcode and nothing to keep in .env.
+client = anthropic.Anthropic()
+
+MODEL = "claude-opus-5"
 
 # Flask app configuration
 app = Flask(__name__)
@@ -54,9 +58,12 @@ def extract_text_from_pptx(file_path):
     return full_text
 
 
+SUMMARY_SYSTEM_PROMPT = """You read a whole PowerPoint and write a one to two page cheat sheet from it. Format it as plain text that can be written straight into a PDF: use bullet points and clear structure, and do not use Markdown syntax such as ** or ##, since it is not rendered and would be printed literally. Return only the cheat sheet itself, with no preamble."""
+
+
 def generate_summary(content):
     """
-    Generate a concise summary using OpenAI GPT.
+    Generate a concise summary using Claude.
     
     Args:
         content: Text content to summarize
@@ -64,18 +71,18 @@ def generate_summary(content):
     Returns:
         Summarized text formatted for PDF output
     """
-    prompt = f"""You are to read this entire powerpoint, then create a one to two page 
-    summary of it for a cheat sheet. Format it so that it can be written into a PDF. 
-    You can use bullet points and clear structure.
-    
-    Content: {content}"""
-    
-    response = client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
-        model="gpt-3.5-turbo"
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=16000,
+        system=SUMMARY_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": content}],
     )
     
-    return response.choices[0].message.content
+    # response.content is a list of blocks, not a string - a thinking block can
+    # precede the text, so filter by type rather than indexing content[0].
+    return "".join(
+        block.text for block in response.content if block.type == "text"
+    )
 
 
 def create_pdf(content, output_path=OUTPUT_PDF):
