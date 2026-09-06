@@ -4,6 +4,11 @@ import logo from './assets/study.gif'
 import load from './assets/load.gif'
 import panic from './assets/panic.gif'
 
+// Point at a local backend with VITE_API_BASE in frontend/.env.local, e.g.
+// VITE_API_BASE=http://localhost:5000 - otherwise this falls through to the
+// deployed backend, which is what a production build should use.
+const API_BASE = import.meta.env.VITE_API_BASE ?? "https://kmoosa.pythonanywhere.com";
+
 
 function FileUpload() {
     const [file, setFile] = useState(null);
@@ -38,7 +43,7 @@ function FileUpload() {
 
         try {
             // Send the file to the Flask server
-            const response = await fetch("https://kmoosa.pythonanywhere.com/upload", {
+            const response = await fetch(`${API_BASE}/upload`, {
                 method: "POST",
                 body: formData,
             });
