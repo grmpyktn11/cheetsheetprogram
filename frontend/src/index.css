@@ -1,5 +1,15 @@
 @import "tailwindcss";
-@plugin "daisyui";
+
+/* Every button, alert and file input in this app is a daisyUI class. The plugin
+   was loaded here without daisyui ever being a dependency, so none of them
+   resolved and the interface rendered as unstyled HTML.
+
+   Two themes, so the toggle in the corner has something to switch between.
+   --prefersdark makes dracula the starting point for anyone whose system is
+   already set to dark. */
+@plugin "daisyui" {
+  themes: cupcake --default, dracula --prefersdark;
+}
 
 .img{
     max-width: 10px;

@@ -13,6 +13,33 @@ function format(totalSeconds) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+// Three short beeps, synthesised rather than shipped as an audio file. The
+// point of a pomodoro is being told when it ends, and you are by definition
+// looking at something else when that happens.
+function chime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    [0, 0.22, 0.44].forEach((at) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      // Ramp instead of a hard stop, which clicks.
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+      gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.18);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + at);
+      osc.stop(ctx.currentTime + at + 0.2);
+    });
+    setTimeout(() => ctx.close(), 1200);
+  } catch {
+    // No audio available. The heading and the tab title still change.
+  }
+}
+
 function Timer() {
   const [onBreak, setOnBreak] = useState(false);
   const [remaining, setRemaining] = useState(WORK_SECONDS);
@@ -35,6 +62,7 @@ function Timer() {
       if (left <= 0) {
         setRemaining(0);
         setRunning(false);
+        chime();
       } else {
         setRemaining(left);
       }
@@ -61,9 +89,21 @@ function Timer() {
 
   const done = remaining === 0;
 
+  // The tab title, so a pomodoro that ends behind another window still says so.
+  useEffect(() => {
+    document.title = done
+      ? (onBreak ? "Break over - CheetSheet" : "Pomodoro done - CheetSheet")
+      : "CheetSheet";
+    return () => {
+      document.title = "CheetSheet";
+    };
+  }, [done, onBreak]);
+
   return (
     <div className="container">
-      <h1 className="title">{format(remaining)}</h1>
+      <h1 className={done ? "title is-done" : "title"}>
+        {done ? "TIME!" : format(remaining)}
+      </h1>
       <div className="button-holder">
         <button
           className="cool-button"

@@ -1,5 +1,6 @@
 import os
 import base64
+import uuid
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -23,7 +24,7 @@ app = Flask(__name__)
 CORS(app)
 
 UPLOAD_FOLDER = "./uploads"
-OUTPUT_PDF = "cheat_sheet.pdf"
+OUTPUT_PDF = "cheat_sheet.pdf"   # default for create_pdf() called outside the route
 FONT_PATH = "indie.ttf"
 
 
@@ -31,6 +32,12 @@ def ensure_upload_folder():
     """Create uploads folder if it doesn't exist."""
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
+
+
+# At import, not under __main__. Only `python app.py` ran this before, so under
+# a WSGI server - which is how it is actually deployed - the folder was never
+# created and the first upload failed on file.save().
+ensure_upload_folder()
 
 
 def extract_text_from_pptx(file_path):
@@ -143,23 +150,36 @@ def upload_file():
     if not file.filename.endswith('.pptx'):
         return jsonify({"error": "Only .pptx files are supported"}), 400
 
+    # Both paths used to be fixed names - every request wrote presentation.pptx
+    # and cheat_sheet.pdf - so two people uploading at once each got back
+    # whichever summary finished last. A token per request keeps them apart, and
+    # both files are removed once the PDF is encoded into the response.
+    token = uuid.uuid4().hex
+    file_path = os.path.join(UPLOAD_FOLDER, f"{token}.pptx")
+    pdf_path = os.path.join(UPLOAD_FOLDER, f"{token}.pdf")
+
     try:
-        # Save uploaded file
-        file_path = os.path.join(UPLOAD_FOLDER, 'presentation.pptx')
         file.save(file_path)
-        
+
         # Process the file
         text = extract_text_from_pptx(file_path)
         summary = generate_summary(text)
-        create_pdf(summary)
-        
+        create_pdf(summary, pdf_path)
+
         # Encode PDF and return
-        encoded_pdf = encode_file_to_base64(OUTPUT_PDF)
-        
+        encoded_pdf = encode_file_to_base64(pdf_path)
+
         return jsonify({'pdfEncoded': encoded_pdf}), 200
-    
+
     except Exception as e:
         return jsonify({"error": f"Processing failed: {str(e)}"}), 500
+
+    finally:
+        for path in (file_path, pdf_path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
 
 @app.route("/health", methods=["GET"])

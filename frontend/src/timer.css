@@ -62,3 +62,19 @@
 .cool-button:disabled:hover{
     color: #fefae0;
 }
+
+/* The finished state. The clock reads TIME! rather than 00:00, so a glance
+   tells you it ended rather than that it is about to. */
+.title.is-done{
+    color: #edafb8;
+    animation: done-pulse 1s ease-in-out infinite;
+}
+
+@keyframes done-pulse{
+    0%, 100% { opacity: 1; }
+    50%      { opacity: .45; }
+}
+
+@media (prefers-reduced-motion: reduce){
+    .title.is-done{ animation: none; }
+}
