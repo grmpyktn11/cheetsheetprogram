@@ -1,25 +1,30 @@
 import os
 import base64
+import uuid
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pptx import Presentation
 from fpdf import FPDF
-from openai import OpenAI
+import anthropic
 
 
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv('OPENAI_KEY'))
+# Initialize the Claude client. The zero-arg constructor resolves credentials
+# from the environment: ANTHROPIC_API_KEY, or the profile stored by `ant auth
+# login`. Nothing to hardcode and nothing to keep in .env.
+client = anthropic.Anthropic()
+
+MODEL = "claude-opus-5"
 
 # Flask app configuration
 app = Flask(__name__)
 CORS(app)
 
 UPLOAD_FOLDER = "./uploads"
-OUTPUT_PDF = "cheat_sheet.pdf"
+OUTPUT_PDF = "cheat_sheet.pdf"   # default for create_pdf() called outside the route
 FONT_PATH = "indie.ttf"
 
 
@@ -27,6 +32,12 @@ def ensure_upload_folder():
     """Create uploads folder if it doesn't exist."""
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
+
+
+# At import, not under __main__. Only `python app.py` ran this before, so under
+# a WSGI server - which is how it is actually deployed - the folder was never
+# created and the first upload failed on file.save().
+ensure_upload_folder()
 
 
 def extract_text_from_pptx(file_path):
@@ -54,9 +65,12 @@ def extract_text_from_pptx(file_path):
     return full_text
 
 
+SUMMARY_SYSTEM_PROMPT = """You read a whole PowerPoint and write a one to two page cheat sheet from it. Format it as plain text that can be written straight into a PDF: use bullet points and clear structure, and do not use Markdown syntax such as ** or ##, since it is not rendered and would be printed literally. Return only the cheat sheet itself, with no preamble."""
+
+
 def generate_summary(content):
     """
-    Generate a concise summary using OpenAI GPT.
+    Generate a concise summary using Claude.
     
     Args:
         content: Text content to summarize
@@ -64,18 +78,18 @@ def generate_summary(content):
     Returns:
         Summarized text formatted for PDF output
     """
-    prompt = f"""You are to read this entire powerpoint, then create a one to two page 
-    summary of it for a cheat sheet. Format it so that it can be written into a PDF. 
-    You can use bullet points and clear structure.
-    
-    Content: {content}"""
-    
-    response = client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
-        model="gpt-3.5-turbo"
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=16000,
+        system=SUMMARY_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": content}],
     )
     
-    return response.choices[0].message.content
+    # response.content is a list of blocks, not a string - a thinking block can
+    # precede the text, so filter by type rather than indexing content[0].
+    return "".join(
+        block.text for block in response.content if block.type == "text"
+    )
 
 
 def create_pdf(content, output_path=OUTPUT_PDF):
@@ -136,23 +150,36 @@ def upload_file():
     if not file.filename.endswith('.pptx'):
         return jsonify({"error": "Only .pptx files are supported"}), 400
 
+    # Both paths used to be fixed names - every request wrote presentation.pptx
+    # and cheat_sheet.pdf - so two people uploading at once each got back
+    # whichever summary finished last. A token per request keeps them apart, and
+    # both files are removed once the PDF is encoded into the response.
+    token = uuid.uuid4().hex
+    file_path = os.path.join(UPLOAD_FOLDER, f"{token}.pptx")
+    pdf_path = os.path.join(UPLOAD_FOLDER, f"{token}.pdf")
+
     try:
-        # Save uploaded file
-        file_path = os.path.join(UPLOAD_FOLDER, 'presentation.pptx')
         file.save(file_path)
-        
+
         # Process the file
         text = extract_text_from_pptx(file_path)
         summary = generate_summary(text)
-        create_pdf(summary)
-        
+        create_pdf(summary, pdf_path)
+
         # Encode PDF and return
-        encoded_pdf = encode_file_to_base64(OUTPUT_PDF)
-        
+        encoded_pdf = encode_file_to_base64(pdf_path)
+
         return jsonify({'pdfEncoded': encoded_pdf}), 200
-    
+
     except Exception as e:
         return jsonify({"error": f"Processing failed: {str(e)}"}), 500
+
+    finally:
+        for path in (file_path, pdf_path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
 
 @app.route("/health", methods=["GET"])
